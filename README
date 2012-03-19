@@ -1,0 +1,7 @@
+These are git hooks I've written.
+
+pre-receive : Checks the status of JIRA tickets mentioned in the commit message (this allows fish-eye to reference the source)
+
+TODO:
++ Better way to acquire user credentials (JIRA v4.3.x has weak API auth)
++ Unit tests

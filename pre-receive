@@ -1,9 +1,9 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2.6
 # Version 1.0
 import sys
 
 """
-Git Push Hook for SecondMarket to use with JIRA v4.3.2
+Git Push Hook to use with JIRA v4.3.2
 """
 __author__ = 'Praful Mathur'
 __version__ = '0.1.0'
@@ -43,7 +43,7 @@ def ticket_status(ticket_number, request_lib):
     """
     import json
     (get_method, ConnectionError) = request_lib
-    base_url = "https://portal.secondmarket.com"
+    base_url = "https://{jira_url}"
     api_suffix = "/rest/api/latest/issue/"
     url = base_url + api_suffix + ticket_number
     prepend_help = "Mistake in ticket? Try"
@@ -137,21 +137,21 @@ def check_commit(commit_msg, request_lib):
 
     return False
 
-def push_hook():
+def push_hook(push_msg):
     """
     Push hook - Check commit messages from pushed refs for ticket numbers
     -> Boolean
     """
-    import subprocess
+    import subprocess, shlex
     from requests import get, ConnectionError
 
-    push_msg = sys.stdin.read()
     (base_hash, commit_hash, ref) = push_msg.split(' ')
 
     blackhole = open('/dev/null', 'w')
     # excludes merge commits
     git_cmd = "git log --no-merges --pretty=oneline %s..%s" %(base_hash, commit_hash)
-    git_log = subprocess.check_output(git_cmd.split(' '), stderr=blackhole)
+    git_exec = subprocess.Popen(shlex.split(git_cmd), stdout=subprocess.PIPE, stderr=blackhole)
+    git_log = git_exec.stdout.read() 
 
     commits = git_log.strip().split('\n')
     global git_help
@@ -165,7 +165,8 @@ def push_hook():
 
 if __name__ == '__main__':
     """ SIDE EFFECTS: Return shell exit code (0 - success | 1 - failure) """
-    if push_hook():
+    push_msg = sys.stdin.read()
+    if push_hook(push_msg):
         sys.exit(0)
     else:
         sys.exit(1)
