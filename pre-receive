@@ -1,0 +1,172 @@
+#!/usr/bin/env python
+# Version 1.0
+import sys
+
+"""
+Git Push Hook for SecondMarket to use with JIRA v4.3.2
+"""
+__author__ = 'Praful Mathur'
+__version__ = '0.1.0'
+__license__ = 'BSD'
+
+# GLOBALS
+USERNAME = '' # Your JIRA username
+PASSWORD = '' # Your JIRA password
+git_help = "git rebase -i HEAD~" # changes in push_hook, appends # of commits
+first_err = True # changes in git_status_out, used as flag
+
+def git_status_out(msg, err=True):
+    """
+    Git status out - Output to correct std stream, based on err flag
+    String Boolean? ->
+    SIDE EFFECTS: Outputs the given msg to (STDOUT | STDERR)
+    """
+    global first_err
+    prepend = ">>>>   "
+    output_to = sys.stderr
+
+    if err and first_err:
+        first_err = False
+        output_to.write(prepend + "-----------------------------------\n")
+        output_to.write(prepend + "ERROR: NOTHING IS PUSHED TO REMOTE!\n")
+        output_to.write(prepend + "-----------------------------------\n")
+        output_to.write(prepend + "Please correct the following:\n")
+
+    output_to.write(prepend + msg + "\n")
+
+def ticket_status(ticket_number, request_lib):
+    """
+    Ticket status - Check JIRA that ticket is 'In Progress`
+    Uses JIRA API v4.3.2:
+    http://confluence.atlassian.com/display/JIRA043/JIRA+Documentation
+    String Function -> Boolean
+    """
+    import json
+    (get_method, ConnectionError) = request_lib
+    base_url = "https://portal.secondmarket.com"
+    api_suffix = "/rest/api/latest/issue/"
+    url = base_url + api_suffix + ticket_number
+    prepend_help = "Mistake in ticket? Try"
+
+    # set headers for JIRA request
+    headers = {'content-type': 'application/json'}
+    try:
+        req = get_method(url, auth=(USERNAME,PASSWORD), headers=headers)
+    except ConnectionError:
+        git_status_out("Connection to JIRA timed-out, check Portal")
+        return False
+
+    # Check ticket existence
+    if req.status_code == 200:
+        response = json.loads(req.content)
+
+        # ensure valid response from JIRA
+        if response.has_key('fields'):
+            ticket_state = response['fields']['status']['value']['name']
+
+            if ticket_state == "In Progress":
+                git_status_out("Committing to " + response['self'], err=False)
+                return True
+
+            else:
+                action = "set to 'In Progress'"
+                if ticket_state not in ['Open', 'Reopened']:
+                    action = 're-open and ' + action
+
+                git_status_out("Ticket is '%s' please %s -- %s/browse/%s"\
+                    %(ticket_state, action, base_url, ticket_number))
+                git_status_out("%s `%s`" %(prepend_help, git_help))
+        else:
+            git_status_out("Malformed JIRA response, please try again.")
+
+    else:
+        git_status_out("Ticket does not exist")
+        git_status_out("%s `%s`" %(prepend_help, git_help))
+
+    return False
+
+def ticket_exception(commit_msg):
+    """
+    Ticket exception - Commits that can break the JIRA ticket rule
+    String -> Boolean
+    """
+    # add exceptional commit actions (case-sensitive) to whitelist
+    whitelist = set(['Revert'])
+    action_word = commit_msg.split(' ')[0]
+    if action_word in whitelist:
+        git_status_out("Ticket is an exception to the JIRA rule, action: %s"
+                %(action_word), err=False)
+        return True
+    return False
+
+def extract_ticket_number(commit_msg):
+    """
+    Extract ticket number - Ticket is in JIRA format and prepends commit message
+    String -> (String | None)
+    """
+    import re
+    ticket_regex = re.compile("^\w+-\d+")
+    ticket_match = ticket_regex.match(commit_msg)
+
+    git_status_out("Using commit message -- '%s'" %(commit_msg), err=False)
+
+    if ticket_match:
+        ticket_number = ticket_match.group()
+        msg = "Found ticket number: %s" %(ticket_number)
+        git_status_out(msg, err=False)
+        return ticket_number
+    else:
+        git_status_out("No ticket number found at beginning of commit message.")
+        git_status_out("Example: 'PM-125 - Created a great human being'.")
+        git_status_out("`%s` and reword/squash commit message."  
+                %(git_help))
+        return None
+
+def check_commit(commit_msg, request_lib):
+    """
+    Check commit - Check given commit_msg has an 'In Progress' ticket
+    String Function -> Boolean
+    """
+    if ticket_exception(commit_msg):
+        return True
+
+    ticket_number = extract_ticket_number(commit_msg)
+    if ticket_number:
+        status = ticket_status(ticket_number, request_lib)
+        if(status): return True
+
+    return False
+
+def push_hook():
+    """
+    Push hook - Check commit messages from pushed refs for ticket numbers
+    -> Boolean
+    """
+    import subprocess
+    from requests import get, ConnectionError
+
+    push_msg = sys.stdin.read()
+    (base_hash, commit_hash, ref) = push_msg.split(' ')
+
+    blackhole = open('/dev/null', 'w')
+    # excludes merge commits
+    git_cmd = "git log --no-merges --pretty=oneline %s..%s" %(base_hash, commit_hash)
+    git_log = subprocess.check_output(git_cmd.split(' '), stderr=blackhole)
+
+    commits = git_log.strip().split('\n')
+    global git_help
+    git_help += str(len(commits))
+    for c in commits:
+        spc_idx = c.find(' ')
+        commit_msg = c[spc_idx:].strip()
+        if not check_commit(commit_msg, (get, ConnectionError)):
+            return False
+    return True
+
+if __name__ == '__main__':
+    """ SIDE EFFECTS: Return shell exit code (0 - success | 1 - failure) """
+    if push_hook():
+        sys.exit(0)
+    else:
+        sys.exit(1)
+
