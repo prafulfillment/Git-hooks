@@ -54,7 +54,6 @@ def ticket_status(ticket_number, request_lib):
     except ConnectionError:
         git_status_out("Connection to JIRA timed-out, check Portal")
         return False
-    print req.status_code 
 
     # Check ticket existence
     if req.status_code == 200:
