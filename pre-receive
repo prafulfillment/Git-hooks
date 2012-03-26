@@ -30,7 +30,6 @@ def git_status_out(msg, err=True):
         output_to.write(prepend + "-----------------------------------\n")
         output_to.write(prepend + "ERROR: NOTHING IS PUSHED TO REMOTE!\n")
         output_to.write(prepend + "-----------------------------------\n")
-        output_to.write(prepend + "Please correct the following:\n")
 
     output_to.write(prepend + msg + "\n")
 
@@ -46,7 +45,7 @@ def ticket_status(ticket_number, request_lib):
     base_url = "https://{jira_url}"
     api_suffix = "/rest/api/latest/issue/"
     url = base_url + api_suffix + ticket_number
-    prepend_help = "Mistake in ticket? Try"
+    prepend_help = "Commit message fail? Try"
 
     # set headers for JIRA request
     headers = {'content-type': 'application/json'}
@@ -55,6 +54,7 @@ def ticket_status(ticket_number, request_lib):
     except ConnectionError:
         git_status_out("Connection to JIRA timed-out, check Portal")
         return False
+    print req.status_code 
 
     # Check ticket existence
     if req.status_code == 200:
@@ -79,9 +79,18 @@ def ticket_status(ticket_number, request_lib):
         else:
             git_status_out("Malformed JIRA response, please try again.")
 
-    else:
+    # Auth Error
+    elif req.status_code == 401:
+        git_status_out("Login to JIRA failed, please contact systems immediately!")
+
+    # Ticket Not Found
+    elif req.status_code == 404:
         git_status_out("Ticket does not exist")
         git_status_out("%s `%s`" %(prepend_help, git_help))
+
+    # Unknown Error
+    else: 
+        git_status_out("Unknown error, please contact systems immediately!")
 
     return False
 
