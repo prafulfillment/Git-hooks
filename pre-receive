@@ -116,7 +116,7 @@ def extract_ticket_number(commit_msg):
     ticket_regex = re.compile("^\w+-\d+")
     ticket_match = ticket_regex.match(commit_msg)
 
-    git_status_out("Using commit message -- '%s'" %(commit_msg), err=False)
+    git_status_out("Looking at commit message -- '%s'" %(commit_msg), err=False)
 
     if ticket_match:
         ticket_number = ticket_match.group()
